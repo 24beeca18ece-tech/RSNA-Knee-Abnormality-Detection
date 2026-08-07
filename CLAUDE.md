@@ -9,6 +9,9 @@
 - Full competition dataset is ~570GB (4407 train studies, multi-series
   DICOM each) — far too large for local disk (this machine has ~48GB free
   as of 2026-08-07). Local downloads are a small dev sample only.
+- Only 58 / 4407 train rows (1.3%) have a non-null structured label; the
+  other 4349 have a `Report` but no labels, and `test.csv` has no `Report`
+  column at all. See `docs/baseline_plan.md` "Decided sequencing".
 
 ## Standing rules
 
@@ -59,3 +62,20 @@
    number derived from the local sample (class balance, row counts, image
    properties), prefer re-checking it against the full data from inside a
    kernel, the way `kernels/dev/dev_smoke_test.py` does.
+
+7. **Modeling sequencing is decided, not open — follow this order.** Full
+   rationale in `docs/baseline_plan.md` "Decided sequencing"; summary:
+   - **Step 1**: train/validate the v0 image baseline on ONLY the 58 rows
+     with a real structured label. Its only purpose is to prove data
+     loading -> training -> checkpointing -> kernel push/pull ->
+     `submission.csv` format all work end-to-end on Kaggle. Its score is
+     expected to be noise — treat it as a plumbing test, never as a
+     model-quality signal, and don't spend time tuning it.
+   - **Step 2**: immediately after Step 1 passes once, pivot to building a
+     weak-labeling pipeline that extracts the 12 targets from `Report` text
+     for the other 4349 rows — that's the actual leverage point for a real
+     score, not fusion or bigger backbones.
+   - Because `test.csv` has no `Report` column, final inference stays
+     image-only regardless of how training labels were sourced — Step 2
+     changes what trains the model, not what the model consumes at
+     inference time. Don't build an inference-time text branch.

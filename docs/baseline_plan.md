@@ -1,12 +1,34 @@
-# Baseline plan — v0: fast unimodal image model
+# Baseline plan
 
-Goal of this step: a **real, non-constant** submission — better than the flat/base-rate
-`submission_trivial.csv` — using only images, trained fast, that validates the
-whole infra (checkpointing, offline inference, submission format) cheaply.
-Report text and multimodal fusion come *after* this is checked in and scored.
 File layout and label schema below are confirmed (2026-08-07, both against a
 small local sample and at full scale from inside `kernels/dev/dev_smoke_test.py`
 — see CLAUDE.md rule 6 on why both checks matter).
+
+## Decided sequencing (2026-08-07)
+
+Two steps, in this order, not in parallel:
+
+**Step 1 — v0 image baseline, trained ONLY on the 58 labeled rows.**
+Purpose is exclusively to prove the *pipeline* end-to-end: DICOM loading ->
+training loop -> checkpointing -> `kaggle kernels push`/run/pull -> a
+correctly-formatted `submission.csv`. Its leaderboard score is expected to
+be close to noise (58 examples across 12 targets is not enough to learn
+anything real) and **must be treated as meaningless** — a "did the plumbing
+work" signal, not "is this a good model." Do not spend time tuning it. Move
+to Step 2 as soon as it runs clean end-to-end once.
+
+**Step 2 — weak-labeling pipeline for the other 4349 report-only rows.**
+This is the actual leverage point for a real score (see "label scarcity"
+below for why). Starts immediately after Step 1 passes, not after Step 1 is
+"good" — Step 1 will never be good on its own. Since `test.csv` has no
+`Report` column, weak-labeling only ever grows the *training* set; final
+inference stays image-only regardless of how training labels were sourced,
+so Step 1's inference path (offline, image-only) doesn't need to change
+when Step 2 lands — only the training data feeding it does.
+
+The rest of this document describes Step 1 in detail (the "v0" sections
+below — "v0" names the model version, "Step 1" names the process phase),
+then Step 2 under "Step 2: after Step 1 passes end-to-end once."
 
 ## IMPORTANT: label scarcity - read before designing v1+
 
@@ -41,18 +63,20 @@ Practical implications:
   later in the competition, since the public `test.csv` seen so far may not
   reflect final scoring data.
 
-## Why unimodal-image-first
+## Why unimodal-image-first for Step 1
 
 - Fewer moving parts than image+text fusion -> faster to get to a valid,
-  scored submission.
+  scored submission and prove the pipeline.
 - Establishes and tests the two things `CLAUDE.md` mandates before any real
   GPU spend: checkpoint-to-disk during training, and a fully offline
   inference notebook. Cheaper to debug those on a small model than on the
-  final multimodal one.
-- Gives a concrete leaderboard number to beat, so later multimodal work has
-  a baseline to justify its added complexity/compute cost.
+  Step-2-trained one.
+- Since `test.csv` has no `Report` column, image-only inference is not a
+  Step-1-only simplification — it's the permanent shape of the final
+  submission (see "Decided sequencing"). Step 2 changes what trains the
+  model, not what the model consumes at inference time.
 
-## Data handling (v0, deliberately simple)
+## Data handling (Step 1, deliberately simple)
 
 - **One slice per study**, not the full 3D volume. Studies have multiple
   series (confirmed: `train_series.csv`/`test_series.csv` give
@@ -90,21 +114,27 @@ Practical implications:
 
 ## Training
 
-- Split: **GroupKFold by patient/study ID** (never split slices/series from
-  the same study across train/val — leakage). Single fold for v0 to save
-  time; k-fold ensembling is a later improvement once the pipeline is
-  proven.
+- **Training set is exactly the 58 rows with a non-null structured label**
+  — do not include the other 4349 report-only rows in Step 1 (that's the
+  whole point of Step 2). 58 rows across 12 targets is too small for a
+  meaningful held-out split to mean anything; still exercise the
+  **GroupKFold by StudyInstanceUID** split code path (2 folds is plenty)
+  so the mechanism is proven, but don't read anything into the resulting
+  val AUC — see "Decided sequencing" above.
 - Budget: 3-5 epochs, batch size 32, image size 224, AdamW, lr 3e-4 with
   cosine or step decay, mixed precision (`torch.cuda.amp`) to fit Kaggle's
-  GPU quota. Should train in well under an hour on a Kaggle T4/P100 — this
-  is intentionally cheap.
+  GPU quota. Should train in well under a minute on 58 rows — this step is
+  about proving the mechanics run, not about compute budget.
 - Metric: macro-averaged `roc_auc_score` (sklearn, `average="macro"`)
-  computed on the val fold each epoch — this is the actual competition
-  metric, track it directly rather than proxying with loss alone.
+  computed on the val fold each epoch — wire this up correctly now (it's
+  the actual competition metric) even though the Step 1 number itself is
+  meaningless; Step 2 is where this metric starts mattering.
 - **Checkpointing (per `CLAUDE.md` rule 1):** save model + optimizer state
   to `outputs/checkpoints/` after every epoch, plus a separate `best.pt`
   whenever val macro-AUC improves. Training script must be resumable from
-  the last checkpoint if a Kaggle session gets killed mid-run.
+  the last checkpoint if a Kaggle session gets killed mid-run. Prove this
+  works now, on the cheap 58-row run, rather than discovering a
+  checkpointing bug during a longer Step 2 run.
 
 ## Inference (separate, offline notebook)
 
@@ -117,23 +147,25 @@ Practical implications:
   validation logic rather than re-deriving it.
 - At well under an hour of inference for a single 2D CNN forward pass, this
   leaves enormous headroom under the 9h runtime cap — that headroom is for
-  the multimodal model later, not this step.
+  the Step-2-trained model later, not Step 1 itself.
 
-## Explicit non-goals for v0
+## Explicit non-goals for Step 1
 
-- No report text / multimodal fusion yet.
+- No training on the 4349 report-only rows (that's Step 2, not Step 1).
+- No report text / multimodal fusion.
 - No 3D volume modeling (multi-slice/multi-series aggregation).
 - No test-time augmentation or ensembling.
 - No hyperparameter search.
+- No tuning for leaderboard score — Step 1's score is expected to be noise
+  and that's fine; see "Decided sequencing" above.
 
-Each of these is a reasonable v0.x improvement once the basic pipeline is
-proven end-to-end on the leaderboard.
+Each of these is a reasonable later improvement once Step 2 has produced a
+baseline whose score is actually worth improving.
 
-## After v0 is checked in
+## Step 2: after Step 1 passes end-to-end once
 
-Reordered given the label-scarcity finding above (weak-labeling moved ahead
-of fusion — fusion doesn't matter much if there's only 58 labeled examples
-to fuse with):
+Weak-labeling moved ahead of multimodal fusion — fusion doesn't matter much
+if there's only 58 labeled examples to fuse with:
 
 1. **Weak-label the 4349 report-only rows.** Start with per-language
    keyword/rule matching against the `Report` text for each of the 12
