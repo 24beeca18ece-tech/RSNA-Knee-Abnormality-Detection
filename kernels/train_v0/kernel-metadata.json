@@ -1,0 +1,16 @@
+{
+  "id": "dograbrij/rsna-knee-step-1-v0-plumbing-test",
+  "title": "RSNA Knee - Step 1 v0 plumbing test",
+  "code_file": "train_v0.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "false",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "machine_shape": "",
+  "dataset_sources": ["dograbrij/rsna-knee-src"],
+  "competition_sources": ["rsna-knee-abnormality-detection"],
+  "kernel_sources": [],
+  "model_sources": []
+}
