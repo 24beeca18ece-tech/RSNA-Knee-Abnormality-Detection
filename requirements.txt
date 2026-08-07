@@ -1,0 +1,26 @@
+# Core
+numpy
+pandas
+pyyaml
+tqdm
+
+# Imaging
+pydicom
+pillow
+opencv-python-headless
+scikit-image
+
+# ML / DL
+scikit-learn
+torch
+torchvision
+
+# Text (radiology reports; multilingual per RSNA 2026 challenge description)
+transformers
+
+# Viz (exploration only)
+matplotlib
+seaborn
+
+# Kaggle CLI
+kaggle

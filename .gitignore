@@ -1,0 +1,44 @@
+# Data (downloaded from Kaggle, never commit) - anchored to repo root so it
+# doesn't also match src/data/
+/data/
+*.dcm
+*.npy
+*.npz
+*.h5
+
+# Kaggle credentials
+kaggle.json
+.kaggle/
+
+# Claude Code local runtime state (not project content)
+.claude/
+
+# Outputs (large / regenerable)
+outputs/checkpoints/*.pt
+outputs/checkpoints/*.pth
+outputs/checkpoints/*.ckpt
+outputs/submissions/*.csv
+outputs/logs/*
+outputs/kaggle_runs/*
+!outputs/checkpoints/.gitkeep
+!outputs/submissions/.gitkeep
+!outputs/logs/.gitkeep
+!outputs/figures/.gitkeep
+!outputs/kaggle_runs/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

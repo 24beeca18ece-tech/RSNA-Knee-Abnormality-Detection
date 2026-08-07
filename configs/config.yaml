@@ -1,0 +1,82 @@
+# RSNA Knee Abnormality Detection - project config
+#
+# Schema confirmed 2026-08-07 against real competition files (see
+# notebooks/01_data_exploration.py output and docs/baseline_plan.md).
+#
+# IMPORTANT data findings (see docs/baseline_plan.md for the full writeup):
+#  - Only 58 / 4407 train.csv rows (1.3%) have any non-null structured
+#    target label. The `Report` column is present for all 4407 rows
+#    (mean length ~1100 chars, multilingual: Spanish/Dutch/German seen).
+#  - test.csv has ONLY `StudyInstanceUID` - no Report column. Report text
+#    looks to be a train-time-only weak-supervision signal; final image
+#    inference cannot depend on report text being present at test time.
+
+competition:
+  slug: rsna-knee-abnormality-detection
+  metric: macro_auc_roc
+  max_runtime_hours: 9
+  n_targets: 12
+
+paths:
+  data_root: data/
+  train_series_dir: data/train_series/    # data/train_series/<StudyInstanceUID>/<SeriesInstanceUID>/<SOPInstanceUID>.dcm
+  test_series_dir: data/test_series/       # same layout, under test_series/
+  train_labels_csv: data/train.csv         # StudyInstanceUID, Report, + 12 target columns (labels sparse - see note above)
+  train_series_csv: data/train_series.csv  # StudyInstanceUID, SeriesInstanceUID, Fluid_Sensitive, Fat_Suppression, Anatomical_Plane
+  test_csv: data/test.csv                  # StudyInstanceUID only
+  test_series_csv: data/test_series.csv    # same columns as train_series.csv
+  sample_submission_csv: data/sample_submission.csv
+  checkpoints_dir: outputs/checkpoints/
+  submissions_dir: outputs/submissions/
+  logs_dir: outputs/logs/
+
+id_column: StudyInstanceUID
+series_id_column: SeriesInstanceUID
+
+# Exact column names as they appear in the CSVs - note spaces and the
+# apostrophe in "Baker's". Code doing exact-match against these (e.g.
+# src/inference/make_trivial_submission.py) depends on this being verbatim.
+targets:
+  - ACL
+  - MCL
+  - Medial Meniscus
+  - Lateral Meniscus
+  - Medial OA
+  - Lateral OA
+  - PF OA
+  - Effusion
+  - Synovitis
+  - "Baker's"
+  - Contusion
+  - Fracture
+
+# Series-level metadata columns (train_series.csv / test_series.csv) useful
+# for slice/series selection - see docs/baseline_plan.md.
+series_metadata_columns:
+  - Fluid_Sensitive     # 0/1
+  - Fat_Suppression     # 0/1
+  - Anatomical_Plane    # Sagittal / Coronal / Axial
+
+# Confirmed DICOM properties from a sample header (pydicom, stop_before_pixels):
+# Modality=MR, Rows=640, Columns=640, PixelSpacing~=[0.234, 0.234] mm.
+
+seed: 42
+
+baseline:
+  image_size: 224
+  slices_per_study: 1       # trivial v0: single key slice per study
+  batch_size: 32
+  epochs: 3
+  lr: 3.0e-4
+  backbone: resnet18
+  fallback_probability: 0.5   # used when no model / missing study, for a always-valid submission
+
+# Local dev sample (see README.md "Local sample data (small, for dev only)").
+# NOT representative of class balance / dataset scale - for code-logic
+# testing only. Real training happens in Kaggle kernels against the full
+# attached competition dataset - see CLAUDE.md.
+local_sample:
+  studies_downloaded: 1   # train study 1.2.826.0.1.3680043.8.498.10029520033957968044048068502185417806 (5 of its 8 series)
+  test_series_downloaded: 1
+  total_size_mb: 94
+  refresh_with: scripts/download_sample.py   # re-run to re-fetch after a fresh clone; add --prefix for more studies
