@@ -64,18 +64,39 @@
    kernel, the way `kernels/dev/dev_smoke_test.py` does.
 
 7. **Modeling sequencing is decided, not open — follow this order.** Full
-   rationale in `docs/baseline_plan.md` "Decided sequencing"; summary:
-   - **Step 1**: train/validate the v0 image baseline on ONLY the 58 rows
-     with a real structured label. Its only purpose is to prove data
-     loading -> training -> checkpointing -> kernel push/pull ->
-     `submission.csv` format all work end-to-end on Kaggle. Its score is
-     expected to be noise — treat it as a plumbing test, never as a
-     model-quality signal, and don't spend time tuning it.
-   - **Step 2**: immediately after Step 1 passes once, pivot to building a
-     weak-labeling pipeline that extracts the 12 targets from `Report` text
-     for the other 4349 rows — that's the actual leverage point for a real
-     score, not fusion or bigger backbones.
+   rationale in `docs/baseline_plan.md` "Decided sequencing" / "Step 2" /
+   "Step 3"; summary:
+   - **Step 1** (done): v0 image baseline trained on ONLY the 58 structured
+     rows, purely to prove data loading -> training -> checkpointing ->
+     kernel push/pull -> `submission.csv` end-to-end on Kaggle. Its score
+     was noise, as expected — a plumbing test, not a quality signal.
+   - **Step 2** (done, partial coverage, proceeding anyway): LLM-based
+     weak-labeling of `Report` text across 3 providers (claude/groq/gemini
+     — see `scripts/weak_label_reports.py`). 755 / 4349 report-only rows
+     labeled as of 2026-08-13 (813 combined with the 58 structured rows,
+     `data/processed/combined_training_labels.csv`), growing ~100/day via
+     an automated Gemini free-tier trickle (Windows Task Scheduler,
+     `RSNA-Gemini-WeakLabel-Daily`). Decided NOT to wait for full 4349-row
+     coverage (~36 more days at the current rate) — 813 rows is already a
+     big enough jump from 58 to move forward on.
+   - **Step 3** (in progress): self-supervised pretraining of the image
+     encoder on all 4407 studies' images (no labels needed), then
+     fine-tune a classifier head on the 813-row combined labeled set.
+     Higher leverage than continuing to chase weak-label coverage or a
+     bigger Step-1-style supervised-only backbone, since it uses every
+     study's images (labeled or not) rather than leaving the still-3594
+     unlabeled studies' images completely idle.
    - Because `test.csv` has no `Report` column, final inference stays
-     image-only regardless of how training labels were sourced — Step 2
-     changes what trains the model, not what the model consumes at
+     image-only regardless of how training labels were sourced — Step 2/3
+     change what trains the model, not what the model consumes at
      inference time. Don't build an inference-time text branch.
+
+8. **API credentials for the weak-labeling pipeline live in `.env`**
+   (repo root, gitignored) as `GROQ_API_KEY`, `GEMINI_API_KEY`. Loaded via
+   `src/weak_labeling/llm_extract.py::_load_env_key`. Never hardcode a key
+   in a committed file; if a key is ever pasted directly in conversation,
+   treat it as sensitive immediately (write straight to `.env`, don't echo
+   it back). Vertex AI / "Agent Platform" was tried and abandoned (billing
+   not enabled on the linked GCP project) — the working Google path is the
+   plain Gemini Developer API (`generativelanguage.googleapis.com`), not
+   Vertex.

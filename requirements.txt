@@ -17,6 +17,7 @@ torchvision
 
 # Text (radiology reports; multilingual per RSNA 2026 challenge description)
 transformers
+requests  # Groq API calls in src/weak_labeling (weak-label extraction, offline data-prep only)
 
 # Viz (exploration only)
 matplotlib

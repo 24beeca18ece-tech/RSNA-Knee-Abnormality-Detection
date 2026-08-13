@@ -1,6 +1,8 @@
 # Data (downloaded from Kaggle, never commit) - anchored to repo root so it
-# doesn't also match src/data/
-/data/
+# doesn't also match src/data/. /data/processed/ is an exception (below) -
+# small derived artifacts like weak-labeled CSVs, worth versioning.
+/data/*
+!/data/processed/
 *.dcm
 *.npy
 *.npz
@@ -9,6 +11,9 @@
 # Kaggle credentials
 kaggle.json
 .kaggle/
+
+# API credentials (Groq, etc.) - never commit
+.env
 
 # Claude Code local runtime state (not project content)
 .claude/
@@ -25,6 +30,14 @@ outputs/kaggle_runs/*
 !outputs/logs/.gitkeep
 !outputs/figures/.gitkeep
 !outputs/kaggle_runs/.gitkeep
+
+# Weak-labeling working state - raw per-provider checkpoints (superseded by
+# data/processed/weak_labels.csv) and daily scheduled-run logs both grow
+# continuously and aren't meant to be versioned. validation_*.csv (evidence
+# behind the agreement numbers in docs/baseline_plan.md) ARE kept.
+outputs/weak_labeling/weak_extracted*.csv
+outputs/weak_labeling/daily_logs/
+outputs/weak_labeling_smoketest*/
 
 # Python
 __pycache__/

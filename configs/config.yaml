@@ -29,6 +29,8 @@ paths:
   checkpoints_dir: outputs/checkpoints/
   submissions_dir: outputs/submissions/
   logs_dir: outputs/logs/
+  weak_labels_csv: data/processed/weak_labels.csv                    # all report-only rows weak-labeled so far (label_source = weak_<provider>)
+  combined_training_labels_csv: data/processed/combined_training_labels.csv   # structured (58) + weak_labels.csv, rebuild via scripts/build_combined_dataset.py
 
 id_column: StudyInstanceUID
 series_id_column: SeriesInstanceUID
@@ -80,3 +82,21 @@ local_sample:
   test_series_downloaded: 1
   total_size_mb: 94
   refresh_with: scripts/download_sample.py   # re-run to re-fetch after a fresh clone; add --prefix for more studies
+
+# Weak-labeling coverage as of 2026-08-13 (scripts/weak_label_reports.py,
+# scripts/build_combined_dataset.py) - see docs/baseline_plan.md "Step 2"
+# for the full writeup, provider validation numbers, and known caveats
+# (Synovitis is weak across all 3 providers - likely a text-unrecoverable
+# ceiling, not a fixable prompt issue; confidence field doesn't meaningfully
+# correlate with actual errors for groq/gemini, treat bucketing as provisional).
+weak_labeling:
+  providers: [claude, groq, gemini]
+  total_report_only_rows: 4349
+  weak_labeled_so_far: 755          # 300 claude + 335 groq + 120 gemini - re-check, this grows daily via Gemini trickle
+  outstanding: 3594                 # NOT weak-labeled yet - training proceeds on partial coverage, see baseline_plan.md
+  combined_training_rows: 813       # 58 structured + 755 weak
+  gemini_daily_quota_rows: 100      # ~20 requests/day x batch_size=5, scheduled task "RSNA-Gemini-WeakLabel-Daily" (9am daily)
+  validation_mean_agreement:        # vs the 58 structured rows, see outputs/weak_labeling/validation_summary_<provider>.csv
+    claude: 0.846
+    groq: 0.825
+    gemini: 0.842

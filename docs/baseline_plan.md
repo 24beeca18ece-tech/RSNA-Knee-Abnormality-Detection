@@ -162,26 +162,72 @@ Practical implications:
 Each of these is a reasonable later improvement once Step 2 has produced a
 baseline whose score is actually worth improving.
 
-## Step 2: after Step 1 passes end-to-end once
+## Step 2: weak-labeling — done (partial coverage), decision to proceed anyway
 
 Weak-labeling moved ahead of multimodal fusion — fusion doesn't matter much
-if there's only 58 labeled examples to fuse with:
+if there's only 58 labeled examples to fuse with. Keyword/rule matching
+(the original plan) was abandoned before writing any rules: exploration of
+report text found 9+ languages, pervasive negation, and no consistent
+section-header structure - exactly the conditions where naive term matching
+is known to fail. Went straight to LLM-based extraction instead (see
+`src/weak_labeling/llm_extract.py`, `scripts/weak_label_reports.py`).
 
-1. **Weak-label the 4349 report-only rows.** Start with per-language
-   keyword/rule matching against the `Report` text for each of the 12
-   targets (the 58 gold rows are a natural small validation set for
-   precision/recall of the rules before trusting them). A small text
-   classifier trained on the 58 gold rows is a fallback if rules underfit.
-   This is the highest-leverage next step — it's what actually grows the
-   usable training set.
-2. Retrain the v0 image model on the enlarged pseudo-labeled set; compare
-   macro-AUC against the 58-row v0 baseline to confirm weak labels actually
-   help before investing further.
-3. Add multi-series/multi-slice aggregation (e.g. 2.5D: stack a few adjacent
-   slices as channels, or per-series feature pooling) if it beats the
-   single-slice baseline.
-4. Only then consider heavier backbones, k-fold ensembling, or TTA — once
-   there's a working, weakly-supervised baseline to spend the remaining
-   GPU-hour budget on. Note: since `test.csv` has no `Report` column (see
-   above), there's no image+text late-fusion step at *inference* time — the
-   report text's only role is training-time weak labeling.
+**Three providers ended up in the mix**, each hitting a different real
+constraint along the way:
+- **claude** (Claude Code CLI, no separate API key needed): 300 rows.
+  Reliable but consumes Pro-plan session usage, not scaled beyond the
+  initial batch for that reason.
+- **groq** (`openai/gpt-oss-120b`, free tier): 335 rows. Validated well
+  (82.5% agreement) but developed a real, reproducible stalling problem on
+  2026-08-13 - batches hanging 10-20+ min with healthy rate-limit headroom
+  showing (not a quota issue). A quick test over a different network path
+  (phone tethering) succeeded instantly, pointing at a local network/ISP
+  routing issue rather than Groq's servers - but per-user decision, Groq
+  work is paused rather than chased further.
+- **gemini** (`gemini-3.6-flash`, free tier): 120 rows and growing. Validated
+  well (84.2% agreement, best of the three). Free tier is a hard **20
+  requests/day per model** (confirmed empirically - published figures
+  elsewhere claimed ~1500/day, wrong for this tier), so this now runs as an
+  automated daily trickle (~100 rows/day) via Windows Task Scheduler task
+  `RSNA-Gemini-WeakLabel-Daily` (9am daily, see `scripts/run_gemini_daily.ps1`).
+  The extraction code detects the daily-quota 429 specifically
+  (`GeminiDailyQuotaExhausted`) and stops the run cleanly rather than
+  wasting time retrying every remaining batch.
+
+**Validation (against the 58 structured rows) — mean per-target agreement:**
+claude 84.6%, gemini 84.2%, groq 82.5%. All three: Synovitis is
+consistently the weakest target (recall ~44-48%) - false negatives there
+have **zero literal "synovi-" mentions** in the source text, across all
+three providers, which is strong evidence this is a text-unrecoverable
+ceiling (the 58 gold labels appear to use non-textual inference for
+Synovitis), not a fixable prompt/provider issue. Confidence field (groq,
+gemini): doesn't meaningfully correlate with actual per-row error rate in
+either provider's validation run - treat the high/low confidence bucketing
+as provisional, not a real trust signal, until better evidence exists.
+
+**Decision: proceed on partial coverage, not the full 4349.** As of
+2026-08-13: 755 / 4349 report-only rows weak-labeled (300 claude + 335 groq
++ 120 gemini), growing by ~100/day via the Gemini trickle only. Combined
+with the 58 structured rows: **813 total training rows**
+(`data/processed/combined_training_labels.csv`, rebuilt via
+`scripts/build_combined_dataset.py`, `label_source` column tracks
+provenance per row: `structured` / `weak_claude` / `weak_groq` /
+`weak_gemini`). Waiting for full 4349-row coverage would take ~36 more days
+at the Gemini-only trickle rate with Groq paused - not worth blocking
+further progress on. 813 labeled rows is already a >14x increase over the
+58-row Step 1 plumbing set and enough to move forward; re-run
+`build_combined_dataset.py` periodically as coverage grows and retrain.
+
+## Step 3: self-supervised pretraining + fine-tune (in progress)
+
+Higher-leverage than continuing to chase weak-label coverage or bigger
+Step-1-style backbones: pretrain the image encoder on all 4407 studies'
+images with no labels needed at all (self-supervised - e.g. SimCLR/DINO/MAE
+style), then fine-tune a classification head on the 813-row combined
+labeled set from Step 2. This uses images we already have for every study
+(labeled or not) rather than leaving 3594 report-only studies' *images*
+completely unused just because their *labels* aren't ready yet.
+Architecture, exact SSL method, and training plan to be detailed as this is
+built out - see repo for current state (`src/` pretraining code, once
+added) rather than trusting this doc to stay in sync with implementation
+details during active development.
