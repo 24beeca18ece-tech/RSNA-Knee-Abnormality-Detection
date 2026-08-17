@@ -12,21 +12,29 @@ import torch.nn as nn
 import torchvision
 
 
+def build_backbone(name: str = "resnet18", pretrained: bool = True) -> tuple[nn.Module, int]:
+    """Shared backbone builder - used here for the supervised classifier
+    head and by src/models/ssl_model.py for self-supervised pretraining
+    (Step 3), so a backbone pretrained one way loads cleanly into the other
+    (same module structure, just a different head on top)."""
+    weights = "IMAGENET1K_V1" if pretrained else None
+    if name == "resnet18":
+        net = torchvision.models.resnet18(weights=weights)
+        in_features = net.fc.in_features
+        net.fc = nn.Identity()
+    elif name == "efficientnet_b0":
+        net = torchvision.models.efficientnet_b0(weights=weights)
+        in_features = net.classifier[1].in_features
+        net.classifier = nn.Identity()
+    else:
+        raise ValueError(f"Unsupported backbone: {name}")
+    return net, in_features
+
+
 class KneeImageBaseline(nn.Module):
     def __init__(self, n_targets: int = 12, backbone: str = "resnet18", pretrained: bool = True):
         super().__init__()
-        weights = "IMAGENET1K_V1" if pretrained else None
-        if backbone == "resnet18":
-            net = torchvision.models.resnet18(weights=weights)
-            in_features = net.fc.in_features
-            net.fc = nn.Identity()
-        elif backbone == "efficientnet_b0":
-            net = torchvision.models.efficientnet_b0(weights=weights)
-            in_features = net.classifier[1].in_features
-            net.classifier = nn.Identity()
-        else:
-            raise ValueError(f"Unsupported backbone: {backbone}")
-
+        net, in_features = build_backbone(backbone, pretrained)
         self.backbone = net
         self.head = nn.Linear(in_features, n_targets)
 

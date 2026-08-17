@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pydicom
+from PIL import Image
 
 ID_COL = "StudyInstanceUID"
 SERIES_ID_COL = "SeriesInstanceUID"
@@ -74,3 +75,24 @@ def normalize_to_uint8(arr: np.ndarray) -> np.ndarray:
     if hi <= lo:
         return np.zeros_like(arr, dtype=np.uint8)
     return ((arr - lo) / (hi - lo) * 255.0).astype(np.uint8)
+
+
+def load_study_slice_pil(study_uid: str, series_meta_df, series_root: Path, image_size: int) -> Image.Image:
+    """One representative grayscale slice for a study, resized to a square
+    (image_size, image_size) PIL Image - the shared image-loading step
+    behind both the labeled dataset (src/data/dataset.py) and the
+    self-supervised pretraining dataset (src/data/ssl_dataset.py), which
+    otherwise differ only in what they attach as the target. Raises
+    FileNotFoundError if the study has no usable series/slice, same as
+    KneeSliceDataset - a gap in the attached data should be visible, not
+    silently skipped."""
+    series_uid = select_series(study_uid, series_meta_df)
+    if series_uid is None:
+        raise FileNotFoundError(f"No series metadata for study {study_uid}")
+    series_dir = Path(series_root) / study_uid / series_uid
+    slice_path = pick_middle_slice(series_dir)
+    if slice_path is None:
+        raise FileNotFoundError(f"No .dcm files under {series_dir}")
+    arr = load_slice_array(slice_path)
+    img_u8 = normalize_to_uint8(arr)
+    return Image.fromarray(img_u8, mode="L").resize((image_size, image_size), Image.BILINEAR)

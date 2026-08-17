@@ -218,16 +218,51 @@ further progress on. 813 labeled rows is already a >14x increase over the
 58-row Step 1 plumbing set and enough to move forward; re-run
 `build_combined_dataset.py` periodically as coverage grows and retrain.
 
-## Step 3: self-supervised pretraining + fine-tune (in progress)
+## Step 3: self-supervised pretraining + fine-tune (pipeline validated, full run pending)
 
 Higher-leverage than continuing to chase weak-label coverage or bigger
 Step-1-style backbones: pretrain the image encoder on all 4407 studies'
-images with no labels needed at all (self-supervised - e.g. SimCLR/DINO/MAE
-style), then fine-tune a classification head on the 813-row combined
-labeled set from Step 2. This uses images we already have for every study
-(labeled or not) rather than leaving 3594 report-only studies' *images*
-completely unused just because their *labels* aren't ready yet.
-Architecture, exact SSL method, and training plan to be detailed as this is
-built out - see repo for current state (`src/` pretraining code, once
-added) rather than trusting this doc to stay in sync with implementation
-details during active development.
+images with no labels needed at all, then fine-tune a classification head
+on the 813-row combined labeled set from Step 2. This uses images we
+already have for every study (labeled or not) rather than leaving 3594
+report-only studies' *images* completely unused just because their
+*labels* aren't ready yet.
+
+**Method**: SimCLR-style contrastive pretraining (`src/models/ssl_model.py`
+- `SimCLRModel` = shared `build_backbone` + 2-layer projection head,
+NT-Xent loss) on the same single-slice-per-study `resnet18` backbone as
+Step 1 (`src/data/ssl_dataset.py` for the unlabeled paired-augmentation
+dataset, `src/training/train_ssl_pretrain.py` for the training loop).
+Augmentations are a grayscale-adapted SimCLR recipe (random resized crop
+scale (0.5, 1.0) - milder than SimCLR's usual (0.2, 1.0) since the knee
+joint is roughly centered and an aggressive crop risks cropping it out
+entirely; horizontal flip; brightness/contrast jitter, no hue/saturation
+since the image is a replicated grayscale channel; mild Gaussian blur).
+Auto-resumes from the latest checkpoint on start
+(`ssl_epoch_N.pt`/`ssl_latest.pt`/`ssl_backbone_latest.pt` in the
+checkpoints dir) since a full run will very likely span multiple Kaggle
+12h sessions - see CLAUDE.md rule 1.
+
+Fine-tuning (`src/training/finetune.py`) loads the pretrained backbone
+(`ssl_backbone_latest.pt`, or any `ssl_epoch_N.pt`/`ssl_latest.pt` - both
+checkpoint shapes are supported) into `KneeImageBaseline`, trains the
+classifier head (optionally backbone-frozen for the first N epochs via
+`--freeze-backbone-epochs`) on the weak-labeled rows, and validates against
+the **58 real structured rows specifically** (`label_source == "structured"`)
+rather than a random split of the mixed pool - those are the only
+fully-trustworthy labels available, so holding them out gives a much more
+meaningful val signal than a random slice that's itself mostly weak labels.
+
+**Validated 2026-08-13** on Kaggle (`kernels/ssl_pretrain`, kernel
+`dograbrij/rsna-knee-step-3-ssl-pretrain`): 3-epoch, 200-study smoke run
+against the real attached dataset. Same P100/PyTorch CUDA-capability
+mismatch as Step 1 recurred (`pick_device()` fell back to CPU as designed -
+0 GPU-hours used); loss decreased sensibly each epoch (4.82 -> 4.57 ->
+4.35) over 123.8s total; checkpoints produced correctly and independently
+verified to load into `finetune.py` (both checkpoint shapes, real weight
+tensors changing on load, correct forward-pass output shape, and
+`ssl_backbone_latest.pt`/`ssl_latest.pt` confirmed bit-identical backbones
+at the same epoch). Pipeline is proven end-to-end; the full multi-epoch,
+all-4407-study pretraining run (likely spanning several Kaggle sessions
+given CPU fallback throughput, unless a compatible GPU accelerator is
+requested) hasn't been launched yet.

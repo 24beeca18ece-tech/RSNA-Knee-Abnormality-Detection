@@ -8,16 +8,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
 
-from src.preprocessing.dicom_utils import (
-    ID_COL,
-    load_slice_array,
-    normalize_to_uint8,
-    pick_middle_slice,
-    select_series,
-)
+from src.preprocessing.dicom_utils import ID_COL, load_study_slice_pil
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
 IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
@@ -44,24 +37,11 @@ class KneeSliceDataset(Dataset):
     def __len__(self) -> int:
         return len(self.labels_df)
 
-    def _slice_path(self, study_uid: str) -> Path:
-        series_uid = select_series(study_uid, self.series_meta_df)
-        if series_uid is None:
-            raise FileNotFoundError(f"No series metadata for study {study_uid}")
-        series_dir = self.series_root / study_uid / series_uid
-        slice_path = pick_middle_slice(series_dir)
-        if slice_path is None:
-            raise FileNotFoundError(f"No .dcm files under {series_dir}")
-        return slice_path
-
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         row = self.labels_df.iloc[idx]
         study_uid = row[ID_COL]
 
-        slice_path = self._slice_path(study_uid)
-        arr = load_slice_array(slice_path)
-        img_u8 = normalize_to_uint8(arr)
-        img = Image.fromarray(img_u8, mode="L").resize((self.image_size, self.image_size), Image.BILINEAR)
+        img = load_study_slice_pil(study_uid, self.series_meta_df, self.series_root, self.image_size)
         img_t = torch.from_numpy(np.array(img, dtype=np.float32) / 255.0).unsqueeze(0).repeat(3, 1, 1)
         img_t = (img_t - IMAGENET_MEAN) / IMAGENET_STD
 

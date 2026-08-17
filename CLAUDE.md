@@ -79,13 +79,15 @@
      `RSNA-Gemini-WeakLabel-Daily`). Decided NOT to wait for full 4349-row
      coverage (~36 more days at the current rate) — 813 rows is already a
      big enough jump from 58 to move forward on.
-   - **Step 3** (in progress): self-supervised pretraining of the image
-     encoder on all 4407 studies' images (no labels needed), then
-     fine-tune a classifier head on the 813-row combined labeled set.
-     Higher leverage than continuing to chase weak-label coverage or a
-     bigger Step-1-style supervised-only backbone, since it uses every
-     study's images (labeled or not) rather than leaving the still-3594
-     unlabeled studies' images completely idle.
+   - **Step 3** (pipeline validated 2026-08-13, full run pending):
+     self-supervised (SimCLR) pretraining of the image encoder on all 4407
+     studies' images (no labels needed), then fine-tune a classifier head
+     on the 813-row combined labeled set. Higher leverage than continuing
+     to chase weak-label coverage or a bigger Step-1-style supervised-only
+     backbone, since it uses every study's images (labeled or not) rather
+     than leaving the still-3594 unlabeled studies' images completely idle.
+     See `docs/baseline_plan.md` "Step 3" for the validated-run details
+     (`kernels/ssl_pretrain`) - the full multi-epoch run hasn't launched yet.
    - Because `test.csv` has no `Report` column, final inference stays
      image-only regardless of how training labels were sourced — Step 2/3
      change what trains the model, not what the model consumes at

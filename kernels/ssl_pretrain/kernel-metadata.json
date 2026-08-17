@@ -1,0 +1,16 @@
+{
+  "id": "dograbrij/rsna-knee-step-3-ssl-pretrain",
+  "title": "RSNA Knee - Step 3 SSL pretrain",
+  "code_file": "ssl_pretrain_driver.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "false",
+  "machine_shape": "",
+  "dataset_sources": ["dograbrij/rsna-knee-src"],
+  "competition_sources": ["rsna-knee-abnormality-detection"],
+  "kernel_sources": [],
+  "model_sources": []
+}
